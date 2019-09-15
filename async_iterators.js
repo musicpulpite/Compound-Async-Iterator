@@ -1,93 +1,118 @@
-const asyncIteratable = function (resource) {
+/**
+ * A somewhat contrived async iterator wrapping a standard fetch call to an
+ * API testing website (jsonplaceholder.typicode.com)
+ * 
+ * @param {string} resource - URL of fetchable resource
+ * @param {number} limit - Number of resources to return before this iterator is considered 'done'
+ * @returns {object} Iterator object with next method
+ */
+const asyncIterator = function (resource, limit = 10 ) {
+  let id = 1;
   return {
-    [Symbol.asyncIterator]: async function* asyncGenerator() {
-      let i = 1;
-
-      while (i < 10) {
-        const resourceAtId = `${resource}${i}`;
-
-        const response = await fetch(resourceAtId);
-        const json = await response.json();
-
-        yield { resource: resourceAtId, json };
-
-        i++;
-      }
-    }
-  }
-};
-
-const compundAsyncIterable = {
-  [Symbol.asyncIterator]: async function* compoundAsyncGenerator() {
-    const resourceIds = [1, 1, 1, 1];
-    const asyncResources = [
-      'https://jsonplaceholder.typicode.com/todos/',
-      'https://jsonplaceholder.typicode.com/posts/',
-      'https://jsonplaceholder.typicode.com/comments/',
-      'https://jsonplaceholder.typicode.com/albums/'
-    ];
-    asyncResourceMapper = (resource, idx) => new Promise(function(resolve, reject) {
+    next: () => new Promise(function(resolve, reject) {
       setTimeout(() => {
-        fetch(resource + resourceIds[idx])
+        fetch(resource + id)
           .then(response => response.json())
-          .then(json => resolve({ idx, json }))
+          .then(json => {
+            if (id <= limit) {
+              id++;
+              resolve({
+                value: json,
+                done: false
+              })
+            } else {
+              resolve({
+                value: undefined,
+                done: true
+              })
+            }
+          })
           .catch(error => reject(error));
       }, Math.random() * 5000);
-    });
-
-    const promises = asyncResources.map(asyncResourceMapper);
-
-    while (resourceIds.every(idx => idx < 10)) {
-      const { idx, json } = await Promise.race(promises);
-      yield { resource: asyncResources[idx] + resourceIds[idx], json };
-
-      resourceIds[idx]++;
-      promises[idx] = asyncResourceMapper(asyncResources[idx], idx);
-    }
+    })
   }
 };
 
+// The core function: composes an array of async iterators (like the contrived ones above) into a single
+// async iterator that will return the iterated values from each resource in the order that they resolve.
+/**
+ * The core function: composes an array of async iterators (like the contrived ones above) into a single
+ * async iterator that will return the iterated values from each resource in the order that they resolve.
+ * 
+ * @param {array} asyncIterators - Array of async iterators
+ * @param {array} iteratorCallbacks - Array of optional callbacks corresponding to each async iterator
+ * @returns {object} Compound iterator object with next method
+ */
+const compoundAsyncIterator = function(asyncIterators = [], iteratorCallbacks = []) {
+  let doneCount = 0;
+  
+  const iteratorMapper = (iterator, idx) => 
+    iterator.next()
+    .then(resolvedValue => {
+      const callback = iteratorCallbacks[idx];
+      if (callback && typeof callback === 'function') {
+        callback(resolvedValue);
+      }
+      return { idx, resolvedValue };
+    })
+  let iteratorPromises = asyncIterators.map(iteratorMapper);
 
-async function example() {
-  for await ({ resource, json } of asyncIteratable('https://jsonplaceholder.typicode.com/todos/')) {
-    console.log(resource, ": ", json);
-  }
-  for await ({ resource, json } of asyncIteratable('https://jsonplaceholder.typicode.com/posts/')) {
-    console.log(resource, ": ", json);
-  }
-}
+  const iteratorRace = (resolve, reject) => Promise.race(iteratorPromises)
+  .then(({ idx, resolvedValue }) => {
+    if (!resolvedValue.done) {
+      iteratorPromises[idx] = iteratorMapper(asyncIterators[idx], idx);
+      resolve(resolvedValue);
+    } else {
+      doneCount++;
+      if (doneCount === asyncIterators.length) {
+        resolve({ value: undefined, done: true });
+      } else {
+        iteratorPromises[idx] = new Promise((resolve, reject) => {});
+        return iteratorRace(resolve, reject)
+      }
+    }
+  })
+  .catch(error => reject(error))
 
-const compoundExample = async () => {
-  for await ({ resource, json } of compundAsyncIterable) {
-    console.log(resource, ": ", json);
+  return {
+    next: () => new Promise((resolve, reject) => {
+      return iteratorRace(resolve, reject);
+    })
+  }
+};
+
+const compoundIteratorExample = async () => {
+  const resultsList = document.querySelector('#results-list');
+
+  const asyncIteratorsArray = [
+    asyncIterator('https://jsonplaceholder.typicode.com/todos/', limit = 5),
+    asyncIterator('https://jsonplaceholder.typicode.com/posts/', limit = 2),
+  ];
+
+  const iterator = compoundAsyncIterator(asyncIteratorsArray, );
+  let result = await iterator.next();
+
+  while(!result.done) {
+    console.log(result.value);
 
     // Display on page
-    const resultsList = document.querySelector('#results-list');
     const li = document.createElement('li');
-    li.innerHTML = `<b>${resource}</b>: ${JSON.stringify(json, null, 2)}`;
+    li.innerHTML = `${JSON.stringify(result.value, null, 2)}`;
     resultsList.appendChild(li);
-  }
+
+    result = await iterator.next();
+  };
+
+  const li = document.createElement('li');
+  li.innerHTML = '<b>All Done!!</b>';
+  resultsList.appendChild(li);
+
+  console.log('All Done!!')
 };
+
+// compoundIteratorExample();
 
 document.addEventListener('DOMContentLoaded', () => {
   const button = document.querySelector('#async-button');
-  button.addEventListener('click', compoundExample);
+  button.addEventListener('click', compoundIteratorExample);
 });
-// async function compound() {
-//   const promises = [fetch('https://jsonplaceholder.typicode.com/todos/1'), fetch('https://jsonplaceholder.typicode.com/posts/1')]
-
-//   Promise.race(promises)
-//     .then(response => response.json())
-//     .then(json => console.log(json));
-// };
-
-// compound();
-
-// async function example(i) {
-//   console.log('Requested');
-//   const response = await fetch(`https://jsonplaceholder.typicode.com/todos/${i}`);
-//   const json = await response.json();
-//   console.log(json);
-// };
-
-// example(1)
