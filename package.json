@@ -1,0 +1,22 @@
+{
+  "name": "async_iterators_example",
+  "version": "1.0.0",
+  "description": "A clever function that composes async iterators, now in typescript",
+  "main": "async_iterators_ts.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/musicpulpite/Compound-Async-Iterator.git"
+  },
+  "author": "William M.",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/musicpulpite/Compound-Async-Iterator/issues"
+  },
+  "homepage": "https://github.com/musicpulpite/Compound-Async-Iterator#readme",
+  "devDependencies": {
+    "@types/es6-promise": "^3.3.0"
+  }
+}
